@@ -1,0 +1,11 @@
+env_id: "orange-pigeon-v0"
+author: "aviralsachdeva9-stack"
+description: "A smart city pest deterrence environment optimizing noise pollution vs deterrence efficacy."
+tags:
+  - reinforcement-learning
+  - pest-control
+  - gymnasium
+  - openenv
+dependencies:
+  - gymnasium
+  - numpy
