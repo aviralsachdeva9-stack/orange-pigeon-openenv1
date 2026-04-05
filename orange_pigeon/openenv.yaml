@@ -1,0 +1,11 @@
+spec_version: 1
+name: orange_pigeon
+type: space
+runtime: fastapi
+app: server.app:app
+# openenv.yaml ke andar agar port define hai toh
+port: 7860
+environment:
+  dependencies:
+    - openai
+    # baaki jo pehle se likha ho wo rehne dena

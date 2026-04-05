@@ -1,0 +1,2 @@
+[console_scripts]
+server = orange_pigeon.server.app:main
