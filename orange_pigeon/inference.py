@@ -10,17 +10,6 @@ from openai import OpenAI
 from client import OrangePigeonEnv
 from models import OrangePigeonAction
 
-# Mandatory Variables for Hackathon
-IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME") 
-
-# THE FIX: Priority changed! Ab yeh pehle Scaler ki API_KEY uthayega.
-API_KEY = os.getenv("API_KEY") or os.getenv("HF_TOKEN") or "dummy-key"
-API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
-MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
-
-# IMPORTANT: Added this variable for the Hackathon auto-grader
-OPENENV_URL = os.getenv("OPENENV_URL")
-
 TASK_NAME = "orange_pigeon_defense"
 BENCHMARK = "orange_pigeon_v1"
 MAX_STEPS = 10
@@ -74,9 +63,13 @@ def build_user_prompt(step: int, last_state: list, last_reward: float, history: 
 
 def get_model_action(client: OpenAI, step: int, last_state: list, last_reward: float, history: List[str]) -> int:
     user_prompt = build_user_prompt(step, last_state, last_reward, history)
+    
+    # THE FIX: Read MODEL_NAME dynamically at the exact time of the API call
+    model_name = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+    
     try:
         completion = client.chat.completions.create(
-            model=MODEL_NAME,
+            model=model_name,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
@@ -98,7 +91,15 @@ def get_model_action(client: OpenAI, step: int, last_state: list, last_reward: f
 # --- MAIN LOOP ---
 
 async def main() -> None:
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    # THE FIX: Read environment variables INSIDE main() so they are 
+    # fetched freshly AFTER the auto-grader injects them!
+    api_key = os.environ.get("API_KEY") or os.environ.get("HF_TOKEN") or "dummy-key"
+    api_base_url = os.environ.get("API_BASE_URL", "https://router.huggingface.co/v1")
+    openenv_url = os.environ.get("OPENENV_URL")
+    image_name = os.environ.get("LOCAL_IMAGE_NAME")
+    model_name = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+
+    client = OpenAI(base_url=api_base_url, api_key=api_key)
     history: List[str] = []
     rewards: List[float] = []
     steps_taken = 0
@@ -106,14 +107,13 @@ async def main() -> None:
     success = False
     env = None 
 
-    log_start(task=TASK_NAME, env=BENCHMARK, model=MODEL_NAME)
+    log_start(task=TASK_NAME, env=BENCHMARK, model=model_name)
 
     try:
-        if OPENENV_URL:
-            # Note: Check your client.py if the exact method name differs from from_url
-            env = await OrangePigeonEnv.from_url(OPENENV_URL) 
-        elif IMAGE_NAME:
-            env = await OrangePigeonEnv.from_docker_image(IMAGE_NAME)
+        if openenv_url:
+            env = await OrangePigeonEnv.from_url(openenv_url) 
+        elif image_name:
+            env = await OrangePigeonEnv.from_docker_image(image_name)
         else:
             env = await OrangePigeonEnv.from_env("aviralsach/orange-pigeon")
 
@@ -164,7 +164,6 @@ async def main() -> None:
                 print(f"[DEBUG] env.close() error: {e}", flush=True)
             
         log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
-
 
 if __name__ == "__main__":
     asyncio.run(main())
