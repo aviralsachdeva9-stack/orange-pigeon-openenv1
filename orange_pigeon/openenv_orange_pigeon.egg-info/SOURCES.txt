@@ -5,6 +5,7 @@ models.py
 pyproject.toml
 ./__init__.py
 ./client.py
+./inference.py
 ./models.py
 openenv_orange_pigeon.egg-info/PKG-INFO
 openenv_orange_pigeon.egg-info/SOURCES.txt
