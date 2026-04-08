@@ -12,7 +12,9 @@ from models import OrangePigeonAction
 
 # Mandatory Variables for Hackathon
 IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME") 
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
+
+# THE FIX: Priority changed! Ab yeh pehle Scaler ki API_KEY uthayega.
+API_KEY = os.getenv("API_KEY") or os.getenv("HF_TOKEN") or "dummy-key"
 API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
 MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
 
@@ -102,12 +104,11 @@ async def main() -> None:
     steps_taken = 0
     score = 0.0
     success = False
-    env = None # THE FIX: Initialize env variable here to prevent UnboundLocalError
+    env = None 
 
     log_start(task=TASK_NAME, env=BENCHMARK, model=MODEL_NAME)
 
     try:
-        # THE FIX: Moved Network Connection INSIDE the try block!
         if OPENENV_URL:
             # Note: Check your client.py if the exact method name differs from from_url
             env = await OrangePigeonEnv.from_url(OPENENV_URL) 
@@ -147,17 +148,15 @@ async def main() -> None:
                 break
 
         # Calculate final normalized score
-        max_possible_reward = float(MAX_STEPS) # Adjust based on your max possible reward logic
+        max_possible_reward = float(MAX_STEPS) 
         score = sum(rewards) / max_possible_reward if max_possible_reward > 0 else 0.0
         score = min(max(score, 0.0), 1.0)  
         success = score >= SUCCESS_SCORE_THRESHOLD
 
     except Exception as e:
-        # THE FIX: Grader won't crash now, it will safely print this and move to log_end
         print(f"[DEBUG] Runtime/Connection Error: {e}", flush=True)
 
     finally:
-        # THE FIX: Ensure we only close if env was successfully created
         if env is not None:
             try:
                 await env.close()
