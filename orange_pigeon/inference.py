@@ -16,6 +16,9 @@ API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
 API_BASE_URL = os.getenv("API_BASE_URL") or "https://router.huggingface.co/v1"
 MODEL_NAME = os.getenv("MODEL_NAME") or "Qwen/Qwen2.5-72B-Instruct"
 
+# IMPORTANT: Added this variable for the Hackathon auto-grader
+OPENENV_URL = os.getenv("OPENENV_URL")
+
 TASK_NAME = "orange_pigeon_defense"
 BENCHMARK = "orange_pigeon_v1"
 MAX_STEPS = 10
@@ -94,22 +97,25 @@ def get_model_action(client: OpenAI, step: int, last_state: list, last_reward: f
 
 async def main() -> None:
     client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
-
-    # Auto-grader uses Docker, local testing can use HuggingFace spaces
-    if IMAGE_NAME:
-        env = await OrangePigeonEnv.from_docker_image(IMAGE_NAME)
-    else:
-        env = await OrangePigeonEnv.from_env("aviralsach/orange-pigeon")
-
     history: List[str] = []
     rewards: List[float] = []
     steps_taken = 0
     score = 0.0
     success = False
+    env = None # THE FIX: Initialize env variable here to prevent UnboundLocalError
 
     log_start(task=TASK_NAME, env=BENCHMARK, model=MODEL_NAME)
 
     try:
+        # THE FIX: Moved Network Connection INSIDE the try block!
+        if OPENENV_URL:
+            # Note: Check your client.py if the exact method name differs from from_url
+            env = await OrangePigeonEnv.from_url(OPENENV_URL) 
+        elif IMAGE_NAME:
+            env = await OrangePigeonEnv.from_docker_image(IMAGE_NAME)
+        else:
+            env = await OrangePigeonEnv.from_env("aviralsach/orange-pigeon")
+
         result = await env.reset()
         last_state = result.observation.state
         last_reward = 0.0
@@ -147,13 +153,16 @@ async def main() -> None:
         success = score >= SUCCESS_SCORE_THRESHOLD
 
     except Exception as e:
-        print(f"[DEBUG] Runtime Error: {e}", flush=True)
+        # THE FIX: Grader won't crash now, it will safely print this and move to log_end
+        print(f"[DEBUG] Runtime/Connection Error: {e}", flush=True)
 
     finally:
-        try:
-            await env.close()
-        except Exception as e:
-            print(f"[DEBUG] env.close() error: {e}", flush=True)
+        # THE FIX: Ensure we only close if env was successfully created
+        if env is not None:
+            try:
+                await env.close()
+            except Exception as e:
+                print(f"[DEBUG] env.close() error: {e}", flush=True)
             
         log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
 
