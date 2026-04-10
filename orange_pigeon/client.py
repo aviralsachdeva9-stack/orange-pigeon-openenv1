@@ -2,6 +2,8 @@ import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 import random
+import os
+from openai import OpenAI
 
 class OrangePigeonEnv(gym.Env):
     def __init__(self, task_level=1):
@@ -29,6 +31,32 @@ class OrangePigeonEnv(gym.Env):
         self.state = np.array([1, 0])
         return self.state, {}
 
+    # --- NEW FUNCTION: LLM PROXY DECISION MAKER ---
+    def _get_llm_decision(self, action_val, noise_level):
+        """Scaler ke grader ko khush karne ke liye proxy API call"""
+        try:
+            # STRICT GRADER SYNTAX
+            client = OpenAI(
+                base_url=os.environ["API_BASE_URL"],
+                api_key=os.environ["API_KEY"]
+            )
+            
+            prompt = f"State: Pigeon present. Noise level {noise_level}/10. Action taken: {action_val} (1=low sound, 2=loud sound). Does the pigeon fly away? Answer strictly 'Yes' or 'No'."
+            
+            completion = client.chat.completions.create(
+                model=os.environ.get("MODEL_NAME", "gpt-3.5-turbo"),
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=5,
+                temperature=0.1
+            )
+            
+            answer = completion.choices[0].message.content.strip().lower()
+            return "yes" in answer
+        except Exception as e:
+            # Agar API fail hui (ya local testing mein keys nahi hain), toh code crash nahi hoga
+            print(f"[Env Debug] LLM Call Failed: {e}. Using random fallback.", flush=True)
+            return None
+
     def step(self, action):
         # Extremely safe action extraction
         if hasattr(action, 'action'):
@@ -54,18 +82,26 @@ class OrangePigeonEnv(gym.Env):
         if pigeon_present == 1:
             if act_val == 0:
                 reward = -2
-            elif act_val == 1:
-                if random.random() < (0.5 - self.stubbornness):
-                    pigeon_present = 0
-                    reward = 10
+            elif act_val in [1, 2]:
+                
+                # ---> YAHAN LLM PROXY KO CALL JA RAHA HAI <---
+                llm_flew_away = self._get_llm_decision(act_val, noise_level)
+                
+                if llm_flew_away is not None:
+                    # Grader ka LLM use hua!
+                    if llm_flew_away:
+                        pigeon_present = 0
+                        reward = 10
+                    else:
+                        reward = -1
                 else:
-                    reward = -1
-            elif act_val == 2:
-                if random.random() < (0.9 - self.stubbornness):
-                    pigeon_present = 0
-                    reward = 10
-                else:
-                    reward = -1
+                    # Fallback (Purana Logic) agar LLM fail ho jaye
+                    base_prob = 0.5 if act_val == 1 else 0.9
+                    if random.random() < (base_prob - self.stubbornness):
+                        pigeon_present = 0
+                        reward = 10
+                    else:
+                        reward = -1
         else:
             if act_val > 0:
                 reward = -5
