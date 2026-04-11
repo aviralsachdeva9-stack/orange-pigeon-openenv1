@@ -1,0 +1,186 @@
+#!/usr/bin/env python3
+"""
+Orange Pigeon Inference Script
+Follows the official OpenENV format for Phase 2 validation
+"""
+
+import asyncio
+import os
+import re
+import textwrap
+from typing import List, Optional
+
+from openai import AsyncOpenAI
+from orange_pigeon.client import OrangePigeonEnv
+from orange_pigeon.models import OrangePigeonAction
+
+# Environment variables - MUST use exact names with defaults
+IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
+API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
+API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+
+TASK_NAME = "orange_pigeon_defense"
+BENCHMARK = "orange_pigeon_v1"
+MAX_STEPS = 10
+TEMPERATURE = 0.7
+MAX_TOKENS = 50
+
+# Scoring: assuming max reward per step is ~10
+_MAX_REWARD_PER_STEP = 10.0
+MAX_TOTAL_REWARD = MAX_STEPS * _MAX_REWARD_PER_STEP
+
+SYSTEM_PROMPT = textwrap.dedent(
+    """
+    You are controlling a pest deterrence system for an orange pigeon.
+    Available actions:
+    0: Do nothing (quietest)
+    1: Play low sound
+    2: Play high sound
+
+    Goal: Scare away the pigeon while minimizing noise pollution.
+    Reply with ONLY a single digit: 0, 1, or 2.
+    """
+).strip()
+
+
+def log_start(task: str, env: str, model: str) -> None:
+    """Log episode start"""
+    print(f"[START] task={task} env={env} model={model}", flush=True)
+
+
+def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
+    """Log each step following official format"""
+    error_val = error if error else "null"
+    done_val = str(done).lower()
+    print(
+        f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}",
+        flush=True,
+    )
+
+
+def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
+    """Log episode end with final metrics"""
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    print(f"[END] success={str(success).lower()} steps={steps} score={score:.3f} rewards={rewards_str}", flush=True)
+
+
+def build_user_prompt(step: int, state: list, last_reward: float, history: List[str]) -> str:
+    """Build context-aware prompt for the model"""
+    history_block = "\n".join(history[-3:]) if history else "None"
+    return textwrap.dedent(
+        f"""
+        Step: {step}
+        Current state: Pigeon={state[0]}, Noise={state[1]}/10
+        Last reward: {last_reward:.2f}
+        Recent actions:
+        {history_block}
+
+        Choose action (0, 1, or 2):
+        """
+    ).strip()
+
+
+async def get_model_action(
+    client: AsyncOpenAI,
+    step: int,
+    state: list,
+    last_reward: float,
+    history: List[str]
+) -> int:
+    """Get action from LLM via API proxy"""
+    user_prompt = build_user_prompt(step, state, last_reward, history)
+    try:
+        completion = await client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=TEMPERATURE,
+            max_tokens=MAX_TOKENS,
+            stream=False,
+        )
+        text = (completion.choices[0].message.content or "").strip()
+        # Extract first digit 0-2
+        match = re.search(r'[0-2]', text)
+        action = int(match.group(0)) if match else 0
+        return action
+    except Exception as exc:
+        print(f"[DEBUG] Model request failed: {exc}", flush=True)
+        return 0
+
+
+async def main() -> None:
+    """Main inference loop following official format"""
+    if not API_KEY:
+        raise SystemExit("HF_TOKEN or API_KEY must be set.")
+
+    client = AsyncOpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+
+    # Initialize environment
+    env = None
+    if IMAGE_NAME:
+        env = await OrangePigeonEnv.from_docker_image(IMAGE_NAME)
+    else:
+        env = await OrangePigeonEnv.from_env("aviralsach/orange-pigeon")
+
+    history: List[str] = []
+    rewards: List[float] = []
+    steps_taken = 0
+    score = 0.0
+    success = False
+
+    log_start(task=TASK_NAME, env=BENCHMARK, model=MODEL_NAME)
+
+    try:
+        result = await env.reset()
+        state = result.observation.state
+        last_reward = 0.0
+
+        for step in range(1, MAX_STEPS + 1):
+            if result.observation.done:
+                break
+
+            # Get action from LLM
+            action_int = await get_model_action(client, step, state, last_reward, history)
+            action_str = ["do_nothing", "low_sound", "high_sound"][action_int]
+
+            # Step environment
+            result = await env.step(OrangePigeonAction(action=action_int))
+            obs = result.observation
+
+            reward = obs.reward or 0.0
+            done = obs.done
+            error = None
+
+            rewards.append(reward)
+            steps_taken = step
+            state = obs.state
+            last_reward = reward
+
+            # Log step with exact format
+            log_step(step=step, action=action_str, reward=reward, done=done, error=error)
+
+            history.append(f"Step {step}: {action_str} -> {reward:+.2f}")
+
+            if done:
+                break
+
+        # Normalize score to [0, 1]
+        score = sum(rewards) / MAX_TOTAL_REWARD if MAX_TOTAL_REWARD > 0 else 0.0
+        score = min(max(score, 0.0), 1.0)  # clamp to [0, 1]
+        success = score >= 0.5
+
+    finally:
+        try:
+            await env.close()
+        except Exception as e:
+            print(f"[DEBUG] env.close() error: {e}", flush=True)
+
+        # Always log end, even on exception
+        log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
