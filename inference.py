@@ -132,13 +132,31 @@ async def main() -> None:
     client = AsyncOpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
     # Initialize environment
+    print(f"[DEBUG] Initializing environment...", flush=True)
     env = None
     if IMAGE_NAME:
+        print(f"[DEBUG] Using Docker image: {IMAGE_NAME}", flush=True)
         env = await OrangePigeonEnv.from_docker_image(IMAGE_NAME)
     else:
+        print(f"[DEBUG] Using HF space: aviralsach/orange-pigeon", flush=True)
         env = await OrangePigeonEnv.from_env("aviralsach/orange-pigeon")
 
-    history: List[str] = []
+    print(f"[DEBUG] Environment initialized successfully", flush=True)
+
+    # TEST: Make a direct API call to verify the proxy is working
+    print(f"[DEBUG] === TESTING LITELLM PROXY CONNECTION ===", flush=True)
+    try:
+        print(f"[DEBUG] Making test API call to verify proxy...", flush=True)
+        test_response = await client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[{"role": "user", "content": "Say 'PROXY_WORKING'"}],
+            max_tokens=10,
+        )
+        print(f"[DEBUG] TEST API CALL SUCCESSFUL! Response: {test_response.choices[0].message.content}", flush=True)
+    except Exception as e:
+        print(f"[ERROR] TEST API CALL FAILED: {e}", flush=True)
+        raise
+    print(f"[DEBUG] === LITELLM PROXY VERIFIED ===", flush=True)
     rewards: List[float] = []
     steps_taken = 0
     score = 0.0
@@ -152,11 +170,15 @@ async def main() -> None:
         last_reward = 0.0
 
         for step in range(1, MAX_STEPS + 1):
+            print(f"[DEBUG] Step {step}: Checking if done={result.observation.done}", flush=True)
             if result.observation.done:
+                print(f"[DEBUG] Environment is done, exiting loop", flush=True)
                 break
 
+            print(f"[DEBUG] Step {step}: About to call get_model_action() for LLM API call", flush=True)
             # Get action from LLM
             action_int = await get_model_action(client, step, state, last_reward, history)
+            print(f"[DEBUG] Step {step}: Received action={action_int} from LLM", flush=True)
             action_str = ["do_nothing", "low_sound", "high_sound"][action_int]
 
             # Step environment
