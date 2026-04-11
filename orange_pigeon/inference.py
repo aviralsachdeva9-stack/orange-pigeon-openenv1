@@ -10,8 +10,6 @@ from models import OrangePigeonAction
 # ---------------------------------------------------------------------------
 API_BASE_URL = os.environ["API_BASE_URL"]
 API_KEY = os.environ["API_KEY"]
-
-# Grader specifically looks for these exact variable assignments
 MODEL = os.getenv("MODEL", "Qwen/Qwen2.5-72B-Instruct")
 
 # ---------------------------------------------------------------------------
@@ -21,7 +19,8 @@ async def main() -> None:
     if not API_KEY:
         raise SystemExit("API_KEY must be set to query the model.")
 
-    # AsyncOpenAI required — sync client blocks the event loop
+    print(f"[CONFIG] base_url={API_BASE_URL} model={MODEL}", flush=True)
+
     client = AsyncOpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
     task_name = "orange_pigeon_defense"
@@ -51,6 +50,8 @@ async def main() -> None:
 
                 steps_taken = step
 
+                print(f"[API_CALL] step={step} sending request to proxy...", flush=True)
+
                 response = await client.chat.completions.create(
                     model=MODEL,
                     messages=[{"role": "user", "content": f"State: {last_state}. Output 1 integer (0,1,2)."}],
@@ -61,8 +62,6 @@ async def main() -> None:
                 action_text = response.choices[0].message.content.strip()
                 match = re.search(r'\d+', action_text)
                 action_int = int(match.group(0)) if match else 0
-
-                # Clamp to valid action range
                 action_int = min(2, max(0, action_int))
 
                 result = await env.step(OrangePigeonAction(action=action_int))
