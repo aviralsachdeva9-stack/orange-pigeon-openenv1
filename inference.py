@@ -14,11 +14,11 @@ from openai import AsyncOpenAI
 from orange_pigeon.client import OrangePigeonEnv
 from orange_pigeon.models import OrangePigeonAction
 
-# Environment variables - use os.getenv() with defaults (official pattern)
+# Environment variables - MUST be injected by validator (no defaults)
 IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
-API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
-API_KEY = os.getenv("API_KEY") or os.getenv("HF_TOKEN")
-MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4")
+API_BASE_URL = os.getenv("API_BASE_URL")  # Required - validator's LiteLLM proxy URL
+API_KEY = os.getenv("API_KEY")  # Required - validator's injected API key
+MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4")  # Can have default
 
 TASK_NAME = "orange_pigeon_defense"
 BENCHMARK = "orange_pigeon_v1"
@@ -115,19 +115,18 @@ async def get_model_action(
 
 async def main() -> None:
     """Main inference loop following official format"""
-    # Validate required environment variables
-    print(f"[DEBUG] API_BASE_URL set: {bool(API_BASE_URL)}", flush=True)
-    print(f"[DEBUG] API_KEY set: {bool(API_KEY)}", flush=True)
+    # Validate required environment variables from validator
+    print(f"[DEBUG] API_BASE_URL: {API_BASE_URL}", flush=True)
+    print(f"[DEBUG] API_KEY: {'SET' if API_KEY else 'NOT SET'}", flush=True)
     print(f"[DEBUG] MODEL_NAME: {MODEL_NAME}", flush=True)
 
-    if not API_KEY:
-        raise SystemExit("[ERROR] API_KEY not set! Validator must inject API_KEY or HF_TOKEN environment variable.")
     if not API_BASE_URL:
-        raise SystemExit("[ERROR] API_BASE_URL not set!")
+        raise SystemExit("[ERROR] API_BASE_URL not set by validator! This must point to the LiteLLM proxy.")
+    if not API_KEY:
+        raise SystemExit("[ERROR] API_KEY not set by validator!")
 
-    print(f"[DEBUG] Using API_BASE_URL={API_BASE_URL}", flush=True)
-    print(f"[DEBUG] Using MODEL_NAME={MODEL_NAME}", flush=True)
-    print(f"[DEBUG] Initializing OpenAI client...", flush=True)
+    print(f"[DEBUG] Using validator-injected API_BASE_URL: {API_BASE_URL}", flush=True)
+    print(f"[DEBUG] Initializing OpenAI client with proxy...", flush=True)
 
     client = AsyncOpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
