@@ -1,5 +1,10 @@
 import gymnasium as gym
 from pigeon_env import OrangePigeonEnv
+import os
+
+API_BASE_URL = os.getenv("API_BASE_URL", "<your-active-endpoint>")  # ✅
+MODEL_NAME = os.getenv("MODEL_NAME", "<your-active-model>")  # ✅ Not MODEL
+HF_TOKEN = os.getenv("HF_TOKEN")  # ✅ Not API_KEY
 
 def run_random_agent(episodes=3):
     # Humara custom environment load karo

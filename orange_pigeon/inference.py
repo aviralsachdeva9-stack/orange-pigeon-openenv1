@@ -5,26 +5,21 @@ from openai import AsyncOpenAI
 from client import OrangePigeonEnv
 from models import OrangePigeonAction
 
-# ---------------------------------------------------------------------------
-# Configuration
-# ---------------------------------------------------------------------------
-API_BASE_URL = os.environ["API_BASE_URL"]
-API_KEY = os.environ["API_KEY"]
-MODEL = os.getenv("MODEL", "Qwen/Qwen2.5-72B-Instruct")
+# Use the exact environment variable names provided
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000/v1")
+MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4")
+HF_TOKEN = os.getenv("HF_TOKEN")
 
-# ---------------------------------------------------------------------------
-# Gameplay Logic
-# ---------------------------------------------------------------------------
 async def main() -> None:
-    if not API_KEY:
-        raise SystemExit("API_KEY must be set to query the model.")
+    if not HF_TOKEN:
+        raise SystemExit("HF_TOKEN must be set to query the model.")
 
-    print(f"[CONFIG] base_url={API_BASE_URL} model={MODEL}", flush=True)
+    print(f"[CONFIG] base_url={API_BASE_URL} model={MODEL_NAME}", flush=True)
 
-    client = AsyncOpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    client = AsyncOpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
 
     task_name = "orange_pigeon_defense"
-    print(f"[START] task={task_name} env=orange_pigeon_v1 model={MODEL}", flush=True)
+    print(f"[START] task={task_name} env=orange_pigeon_v1 model={MODEL_NAME}", flush=True)
 
     openenv_url = os.getenv("OPENENV_URL")
     image_name = os.getenv("LOCAL_IMAGE_NAME")
@@ -49,11 +44,10 @@ async def main() -> None:
                     break
 
                 steps_taken = step
-
                 print(f"[API_CALL] step={step} sending request to proxy...", flush=True)
 
                 response = await client.chat.completions.create(
-                    model=MODEL,
+                    model=MODEL_NAME,
                     messages=[{"role": "user", "content": f"State: {last_state}. Output 1 integer (0,1,2)."}],
                     max_tokens=10,
                     temperature=0.0,
