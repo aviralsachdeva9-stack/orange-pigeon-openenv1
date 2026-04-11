@@ -16,9 +16,9 @@ from orange_pigeon.models import OrangePigeonAction
 
 # Environment variables - MUST use exact names with defaults
 IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
-API_KEY = os.getenv("HF_TOKEN") or os.getenv("API_KEY")
-API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME = os.getenv("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+API_KEY = os.getenv("API_KEY") or os.getenv("HF_TOKEN")  # Try API_KEY first per validator requirement
+API_BASE_URL = os.getenv("API_BASE_URL")
+MODEL_NAME = os.getenv("MODEL_NAME")
 
 TASK_NAME = "orange_pigeon_defense"
 BENCHMARK = "orange_pigeon_v1"
@@ -91,6 +91,7 @@ async def get_model_action(
     """Get action from LLM via API proxy"""
     user_prompt = build_user_prompt(step, state, last_reward, history)
     try:
+        print(f"[DEBUG] Making API call to {API_BASE_URL} with model {MODEL_NAME}", flush=True)
         completion = await client.chat.completions.create(
             model=MODEL_NAME,
             messages=[
@@ -101,20 +102,30 @@ async def get_model_action(
             max_tokens=MAX_TOKENS,
             stream=False,
         )
+        print(f"[DEBUG] API call successful, got response", flush=True)
         text = (completion.choices[0].message.content or "").strip()
         # Extract first digit 0-2
         match = re.search(r'[0-2]', text)
         action = int(match.group(0)) if match else 0
         return action
     except Exception as exc:
-        print(f"[DEBUG] Model request failed: {exc}", flush=True)
-        return 0
+        print(f"[ERROR] API call failed: {exc}", flush=True)
+        raise  # Don't silently fail - propagate the error
 
 
 async def main() -> None:
     """Main inference loop following official format"""
+    # Validate required environment variables
+    print(f"[DEBUG] API_KEY set: {bool(API_KEY)}", flush=True)
+    print(f"[DEBUG] API_BASE_URL: {API_BASE_URL}", flush=True)
+    print(f"[DEBUG] MODEL_NAME: {MODEL_NAME}", flush=True)
+
     if not API_KEY:
-        raise SystemExit("HF_TOKEN or API_KEY must be set.")
+        raise SystemExit("API_KEY must be set (or HF_TOKEN as fallback).")
+    if not API_BASE_URL:
+        raise SystemExit("API_BASE_URL must be set.")
+    if not MODEL_NAME:
+        raise SystemExit("MODEL_NAME must be set.")
 
     client = AsyncOpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
