@@ -14,11 +14,11 @@ from openai import AsyncOpenAI
 from orange_pigeon.client import OrangePigeonEnv
 from orange_pigeon.models import OrangePigeonAction
 
-# Environment variables - MUST use exact names with defaults
+# Environment variables - MUST match EXACTLY what the validator injects (no fallbacks)
 IMAGE_NAME = os.getenv("LOCAL_IMAGE_NAME")
-API_KEY = os.getenv("API_KEY") or os.getenv("HF_TOKEN")  # Try API_KEY first per validator requirement
-API_BASE_URL = os.getenv("API_BASE_URL")
-MODEL_NAME = os.getenv("MODEL_NAME")
+API_BASE_URL = os.environ["API_BASE_URL"]  # Required - must be injected by validator
+API_KEY = os.environ["API_KEY"]  # Required - must be injected by validator
+MODEL_NAME = os.getenv("MODEL_NAME", "gpt-4")  # Can have default
 
 TASK_NAME = "orange_pigeon_defense"
 BENCHMARK = "orange_pigeon_v1"
@@ -115,17 +115,11 @@ async def get_model_action(
 
 async def main() -> None:
     """Main inference loop following official format"""
-    # Validate required environment variables
-    print(f"[DEBUG] API_KEY set: {bool(API_KEY)}", flush=True)
-    print(f"[DEBUG] API_BASE_URL: {API_BASE_URL}", flush=True)
-    print(f"[DEBUG] MODEL_NAME: {MODEL_NAME}", flush=True)
-
-    if not API_KEY:
-        raise SystemExit("API_KEY must be set (or HF_TOKEN as fallback).")
-    if not API_BASE_URL:
-        raise SystemExit("API_BASE_URL must be set.")
-    if not MODEL_NAME:
-        raise SystemExit("MODEL_NAME must be set.")
+    # Environment variables are already loaded at module level with os.environ[...]
+    # which ensures they're set (KeyError will be raised if missing)
+    print(f"[DEBUG] API_BASE_URL={API_BASE_URL}", flush=True)
+    print(f"[DEBUG] API_KEY={'***' if API_KEY else 'NOT SET'}", flush=True)
+    print(f"[DEBUG] MODEL_NAME={MODEL_NAME}", flush=True)
 
     client = AsyncOpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
