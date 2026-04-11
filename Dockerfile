@@ -12,5 +12,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# default command to test the env
-CMD ["python", "test_agent.py"]
+# Run the inference script with LLM API calls for Phase 2 validation
+CMD ["python", "inference.py"]
