@@ -7,14 +7,12 @@ from client import OrangePigeonEnv
 from models import OrangePigeonAction
 
 async def main() -> None:
-    # 1. THE EXACT INLINE SYNTAX REQUIRED BY THEIR DUMB BOT
-    # No variables, no fallbacks. Exactly what the error message asked for.
+    # THE EXACT INLINE SYNTAX REQUIRED BY THEIR DUMB BOT
     client = AsyncOpenAI(
         base_url=os.environ["API_BASE_URL"],
         api_key=os.environ["API_KEY"]
     )
 
-    # 2. No hardcoded fallback strings to trigger the "other providers" rule
     MODEL = os.environ.get("MODEL", "gpt-4")
     
     task_name = "orange_pigeon_defense"
@@ -42,7 +40,6 @@ async def main() -> None:
                 break
             steps_taken = step
 
-            # Calling their proxy with exactly what they want
             response = await client.chat.completions.create(
                 model=MODEL,
                 messages=[{"role": "user", "content": f"State: {last_state}. Output 1 integer (0,1,2)."}],
@@ -60,19 +57,12 @@ async def main() -> None:
             rewards.append(reward)
             last_state = result.observation.state
 
-            print(
-                f"[STEP] step={step} action={action_int} reward={reward:.2f} "
-                f"done={str(result.observation.done).lower()} error=null",
-                flush=True,
-            )
+            print(f"[STEP] step={step} action={action_int} reward={reward:.2f} done={str(result.observation.done).lower()} error=null", flush=True)
 
         score = sum(rewards) / 10.0 if rewards else 0.0
         success_val = str(score >= 0.5).lower()
         rewards_str = ",".join([f"{r:.2f}" for r in rewards])
-        print(
-            f"[END] success={success_val} steps={steps_taken} score={score:.3f} rewards={rewards_str}",
-            flush=True,
-        )
+        print(f"[END] success={success_val} steps={steps_taken} score={score:.3f} rewards={rewards_str}", flush=True)
 
 if __name__ == "__main__":
     asyncio.run(main())
